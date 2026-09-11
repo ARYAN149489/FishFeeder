@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1083258068643",
+    "project_id": "aquafeed-ebe01",
+    "storage_bucket": "aquafeed-ebe01.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1083258068643:android:2c70a91d24260f8dafa916",
+        "android_client_info": {
+          "package_name": "com.aquafeed.aquafeed"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB549YsaHAGXsxoibFrKtBLTplq56QQnv4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
