@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/sensor_reading.dart';
 import '../models/feeding_schedule.dart';
@@ -108,7 +109,7 @@ class FirestoreService {
 
   /// Seed sample data into all collections for UI testing
   Future<void> seedSampleData() async {
-    print('FirestoreService: Seeding sample data to $_devicePath...');
+    debugPrint('FirestoreService: Seeding sample data to $_devicePath...');
     final batch = _db.batch();
 
     // Sample sensor reading
@@ -171,7 +172,7 @@ class FirestoreService {
     }
 
     await batch.commit();
-    print('FirestoreService: Sample data committed successfully!');
+    debugPrint('FirestoreService: Sample data committed successfully!');
   }
 
   /// Clear all data in all device subcollections for testing / fresh reset

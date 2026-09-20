@@ -47,8 +47,8 @@ class DefaultFirebaseOptions {
 
   // TODO: Add an iOS app in Firebase Console if needed
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'REPLACE_WITH_IOS_API_KEY',
-    appId: 'REPLACE_WITH_IOS_APP_ID',
+    apiKey: 'AIzaSyAasHNq9amHgTdfrXBRIvfb8car-YzN2sE',
+    appId: '1:1083258068643:ios:7948efd37c75ce93afa916',
     messagingSenderId: '1083258068643',
     projectId: 'aquafeed-ebe01',
     storageBucket: 'aquafeed-ebe01.firebasestorage.app',
