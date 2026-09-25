@@ -34,7 +34,7 @@ class SensorReading {
       feedWeight: (data['feed_weight'] ?? 0).toDouble(),
       batteryPercent: (data['battery_percent'] ?? 0).toInt(),
       solarCharging: data['solar_charging'] ?? false,
-      timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      timestamp: _parseTimestamp(data['timestamp']),
     );
   }
 
@@ -49,5 +49,15 @@ class SensorReading {
       'solar_charging': solarCharging,
       'timestamp': FieldValue.serverTimestamp(),
     };
+  }
+
+  /// Parse timestamp from either Firestore Timestamp or ISO string (REST API)
+  static DateTime _parseTimestamp(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is Timestamp) return value.toDate();
+    if (value is String) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+    return DateTime.now();
   }
 }

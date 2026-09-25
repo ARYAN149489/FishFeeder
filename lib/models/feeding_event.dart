@@ -24,8 +24,7 @@ class FeedingEvent {
       quantityGrams: (data['quantity_grams'] ?? 0).toDouble(),
       trigger: data['trigger'] ?? 'manual',
       success: data['success'] ?? false,
-      timestamp:
-          (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      timestamp: _parseTimestamp(data['timestamp']),
       scheduleId: data['schedule_id'],
     );
   }
@@ -38,5 +37,15 @@ class FeedingEvent {
       'timestamp': FieldValue.serverTimestamp(),
       if (scheduleId != null) 'schedule_id': scheduleId,
     };
+  }
+
+  /// Parse timestamp from either Firestore Timestamp or ISO string (REST API)
+  static DateTime _parseTimestamp(dynamic value) {
+    if (value == null) return DateTime.now();
+    if (value is Timestamp) return value.toDate();
+    if (value is String) {
+      return DateTime.tryParse(value) ?? DateTime.now();
+    }
+    return DateTime.now();
   }
 }
