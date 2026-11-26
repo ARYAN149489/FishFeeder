@@ -59,7 +59,7 @@ const String DEVICE_PATH = "devices/device_001/";
 
 // ─── TIMING ──────────────────────────────────────────────────
 #define COMMAND_POLL_INTERVAL  5000   // Poll commands every 5 seconds
-#define SCHEDULE_POLL_INTERVAL 60000  // Poll schedules every 60 seconds
+#define SCHEDULE_POLL_INTERVAL 20000  // Check schedules every 20 seconds (with minute deduplication)
 #define NTP_SYNC_INTERVAL      3600000 // Sync time every hour
 
 unsigned long lastCommandPoll = 0;
@@ -69,6 +69,7 @@ unsigned long lastNTPSync = 0;
 // ─── STATE ───────────────────────────────────────────────────
 float lastWeightBeforeFeed = 0;
 String currentCommandId = "";
+String lastFiredScheduleMinute = ""; // Prevents duplicate triggers in the same minute
 
 // ─── NTP TIME ────────────────────────────────────────────────
 #include <time.h>
@@ -258,9 +259,9 @@ void uploadSensorReading(float temp, float ph, float tds, float turb,
 void pollCommands() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // Use Firestore REST API structured query to find pending commands
+  // Fetch latest commands ordered by created_at descending (up to 5 recent)
   String url = FIRESTORE_BASE + DEVICE_PATH + "commands?key=" + FIREBASE_API_KEY
-               + "&orderBy=created_at&pageSize=1";
+               + "&orderBy=created_at%20desc&pageSize=5";
 
   std::unique_ptr<BearSSL::WiFiClientSecure> client(new BearSSL::WiFiClientSecure);
   client->setInsecure();
@@ -446,12 +447,18 @@ void checkSchedules() {
 
         // Check if current time matches schedule time
         if (String(currentTime) == schedTime) {
+          String triggerKey = currentDay + "_" + schedTime;
+          if (triggerKey == lastFiredScheduleMinute) {
+            continue; // Already executed for this minute
+          }
+
           // Check if current day is in the schedule's days array
           JsonArray days = document["fields"]["days"]["arrayValue"]["values"].as<JsonArray>();
 
           for (JsonVariant dayVal : days) {
             String day = dayVal["stringValue"].as<String>();
             if (day == currentDay) {
+              lastFiredScheduleMinute = triggerKey;
               int duration = 10; // Default 10 seconds
               if (document["fields"].containsKey("duration_seconds")) {
                 if (document["fields"]["duration_seconds"].containsKey("integerValue")) {
