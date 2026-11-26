@@ -71,10 +71,11 @@
 // Solar: Threshold voltage to detect charging
 #define SOLAR_THRESHOLD_V  1.0
 
-// Servo: Positions for feeding
-#define SERVO_CLOSED     0     // Closed position (degrees)
-#define SERVO_OPEN       90    // Open position (degrees)
-#define FEED_DURATION_MS 3000  // How long to keep gate open per feeding (ms)
+// Servo: Positions for feeding & duration safety
+#define SERVO_CLOSED             0       // Closed position (degrees)
+#define SERVO_OPEN               90      // Open position (degrees)
+#define DEFAULT_FEED_DURATION_MS 5000    // Default timed feed duration (5s)
+#define MAX_SAFETY_FEED_MS       300000  // 5-minute max continuous feed safety shutoff
 
 // ─── TIMING ──────────────────────────────────────────────────
 #define SENSOR_INTERVAL_MS    30000  // Read sensors every 30 seconds
@@ -94,6 +95,7 @@ unsigned long lastSensorRead = 0;
 unsigned long lastCommandPoll = 0;
 bool isFeeding = false;
 unsigned long feedStartTime = 0;
+unsigned long feedDurationLimitMs = 0; // 0 = continuous until STOP_FEED command
 
 // Latest sensor values
 float temperature = 0.0;
@@ -164,9 +166,18 @@ void loop() {
     handleCommand(cmd);
   }
 
-  // 3. Handle ongoing feeding (auto-close after duration)
-  if (isFeeding && (now - feedStartTime >= FEED_DURATION_MS)) {
-    stopFeeding();
+  // 3. Handle ongoing feeding
+  if (isFeeding) {
+    // If a timed duration was set, auto-close when timer elapses
+    if (feedDurationLimitMs > 0 && (now - feedStartTime >= feedDurationLimitMs)) {
+      Serial.println(F("Timed feeding duration reached."));
+      stopFeeding();
+    }
+    // Safety cut-off for continuous feeding mode
+    else if (now - feedStartTime >= MAX_SAFETY_FEED_MS) {
+      Serial.println(F("Max continuous safety limit reached. Stopping feeding."));
+      stopFeeding();
+    }
   }
 }
 
@@ -326,8 +337,13 @@ void handleCommand(String cmd) {
   Serial.print(F("Received command: "));
   Serial.println(cmd);
 
-  if (cmd == "START_FEED") {
-    startFeeding();
+  if (cmd.startsWith("START_FEED")) {
+    int durationSec = 0;
+    int colonIdx = cmd.indexOf(':');
+    if (colonIdx != -1) {
+      durationSec = cmd.substring(colonIdx + 1).toInt();
+    }
+    startFeeding(durationSec);
     sendToESP("FEED_STARTED");
   }
   else if (cmd == "STOP_FEED") {
@@ -350,9 +366,18 @@ void handleCommand(String cmd) {
 
 // ─── FEEDING CONTROL ────────────────────────────────────────
 
-void startFeeding() {
+void startFeeding(int durationSec) {
   if (!isFeeding) {
-    Serial.println(F("Starting feeding - opening servo gate..."));
+    Serial.print(F("Starting feeding - opening dispenser..."));
+    if (durationSec > 0) {
+      Serial.print(F(" (Duration: "));
+      Serial.print(durationSec);
+      Serial.println(F("s)"));
+      feedDurationLimitMs = (unsigned long)durationSec * 1000UL;
+    } else {
+      Serial.println(F(" (Continuous until STOP_FEED)"));
+      feedDurationLimitMs = 0;
+    }
     feedServo.write(SERVO_OPEN);
     isFeeding = true;
     feedStartTime = millis();
@@ -361,22 +386,28 @@ void startFeeding() {
 
 void stopFeeding() {
   if (isFeeding) {
-    Serial.println(F("Stopping feeding - closing servo gate..."));
+    unsigned long elapsedMs = millis() - feedStartTime;
+    unsigned long durationSec = (elapsedMs + 500) / 1000;
+    Serial.println(F("Stopping feeding - closing dispenser gate..."));
     feedServo.write(SERVO_CLOSED);
     isFeeding = false;
+    feedDurationLimitMs = 0;
 
     // Read weight after feeding to determine how much was dispensed
     delay(500); // Let things settle
     readFeedWeight();
 
     // Notify ESP8266 that feeding is complete
-    StaticJsonDocument<128> doc;
+    StaticJsonDocument<192> doc;
     doc["cmd"] = "FEED_COMPLETE";
+    doc["duration_sec"] = durationSec;
     doc["weight_after"] = feedWeight;
     String jsonStr;
     serializeJson(doc, jsonStr);
     espSerial.println(jsonStr);
 
-    Serial.println(F("Feeding complete."));
+    Serial.print(F("Feeding complete. Total duration: "));
+    Serial.print(durationSec);
+    Serial.println(F("s."));
   }
 }

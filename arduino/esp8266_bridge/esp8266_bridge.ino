@@ -195,14 +195,18 @@ void handleArduinoMessage(String message) {
   }
   else if (cmd == "FEED_COMPLETE") {
     // Arduino finished feeding -> log to history
+    int durationSec = doc.containsKey("duration_sec") ? doc["duration_sec"].as<int>() : 0;
     float weightAfter = doc["weight_after"];
     float dispensed = lastWeightBeforeFeed - weightAfter;
+    if (dispensed <= 0 && durationSec > 0) {
+      dispensed = durationSec * 5.0; // fallback calculation if load cell is not active
+    }
     if (dispensed < 0) dispensed = 0;
 
     // Update command status to completed
     if (currentCommandId.length() > 0) {
       updateCommandStatus(currentCommandId, "completed");
-      logFeedingHistory(dispensed, "manual", true);
+      logFeedingHistory(dispensed, durationSec, "manual", true);
       currentCommandId = "";
     }
   }
@@ -294,7 +298,20 @@ void pollCommands() {
 
           // Send command to Arduino
           if (type == "start_feeding") {
-            Serial.println("START_FEED");
+            int duration = 0;
+            if (document["fields"].containsKey("duration_seconds")) {
+              if (document["fields"]["duration_seconds"].containsKey("integerValue")) {
+                duration = document["fields"]["duration_seconds"]["integerValue"].as<String>().toInt();
+              } else if (document["fields"]["duration_seconds"].containsKey("doubleValue")) {
+                duration = (int)document["fields"]["duration_seconds"]["doubleValue"].as<float>();
+              }
+            }
+            if (duration > 0) {
+              Serial.print("START_FEED:");
+              Serial.println(duration);
+            } else {
+              Serial.println("START_FEED");
+            }
           } else if (type == "stop_feeding") {
             Serial.println("STOP_FEED");
           }
@@ -344,13 +361,14 @@ void updateCommandStatus(String commandId, String newStatus) {
 
 // ─── FIRESTORE: LOG FEEDING HISTORY ─────────────────────────
 
-void logFeedingHistory(float quantity, String trigger, bool success) {
+void logFeedingHistory(float quantity, int durationSec, String trigger, bool success) {
   if (WiFi.status() != WL_CONNECTED) return;
 
   String url = FIRESTORE_BASE + DEVICE_PATH + "feeding_history?key=" + FIREBASE_API_KEY;
 
   String payload = "{\"fields\":{"
     "\"quantity_grams\":{\"doubleValue\":" + String(quantity, 1) + "},"
+    "\"duration_seconds\":{\"integerValue\":\"" + String(durationSec) + "\"},"
     "\"trigger\":{\"stringValue\":\"" + trigger + "\"},"
     "\"success\":{\"booleanValue\":" + String(success ? "true" : "false") + "},"
     "\"timestamp\":{\"timestampValue\":\"" + getISOTimestamp() + "\"}"
@@ -434,18 +452,34 @@ void checkSchedules() {
           for (JsonVariant dayVal : days) {
             String day = dayVal["stringValue"].as<String>();
             if (day == currentDay) {
-              float quantity = document["fields"]["quantity_grams"]["doubleValue"].as<float>();
+              int duration = 10; // Default 10 seconds
+              if (document["fields"].containsKey("duration_seconds")) {
+                if (document["fields"]["duration_seconds"].containsKey("integerValue")) {
+                  duration = document["fields"]["duration_seconds"]["integerValue"].as<String>().toInt();
+                } else if (document["fields"]["duration_seconds"].containsKey("doubleValue")) {
+                  duration = (int)document["fields"]["duration_seconds"]["doubleValue"].as<float>();
+                }
+              } else if (document["fields"].containsKey("quantity_grams")) {
+                float q = document["fields"]["quantity_grams"]["doubleValue"].as<float>();
+                duration = (int)(q / 5.0);
+                if (duration < 2) duration = 2;
+              }
 
-              Serial.print("Schedule triggered! Dispensing ");
-              Serial.print(quantity);
-              Serial.println("g of feed");
+              float quantity = duration * 5.0;
+              if (document["fields"].containsKey("quantity_grams")) {
+                quantity = document["fields"]["quantity_grams"]["doubleValue"].as<float>();
+              }
 
-              // Tell Arduino to start feeding
-              Serial.println("START_FEED");
+              Serial.print("Schedule triggered! Dispensing for ");
+              Serial.print(duration);
+              Serial.println("s");
+
+              // Tell Arduino to start feeding with specified duration
+              Serial.print("START_FEED:");
+              Serial.println(duration);
 
               // Log to feeding history
-              delay(5000); // Wait for feeding to happen
-              logFeedingHistory(quantity, "scheduled", true);
+              logFeedingHistory(quantity, duration, "scheduled", true);
 
               break;
             }

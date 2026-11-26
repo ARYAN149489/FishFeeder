@@ -308,7 +308,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   Row(
                     children: [
                       Text(
-                        '${event.quantityGrams.toStringAsFixed(0)}g dispensed',
+                        event.durationSeconds != null
+                            ? '${event.durationSeconds}s (${event.quantityGrams.toStringAsFixed(0)}g)'
+                            : '${event.quantityGrams.toStringAsFixed(0)}g dispensed',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,

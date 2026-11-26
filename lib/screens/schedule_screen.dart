@@ -20,7 +20,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   void _showAddScheduleSheet() {
     TimeOfDay selectedTime = const TimeOfDay(hour: 8, minute: 0);
     Set<String> selectedDays = {};
-    final quantityController = TextEditingController(text: '50');
+    int durationSeconds = 10;
+    final durationController = TextEditingController(text: '10');
 
     showModalBottomSheet(
       context: context,
@@ -178,34 +179,84 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // Quantity input
-                  const Text(
-                    'Quantity (grams)',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white54,
-                      letterSpacing: 0.5,
-                    ),
+                  // Duration (how long food is dispensed)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Dispense Duration',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white54,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      Text(
+                        '$durationSeconds seconds',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.accentCyan,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
+
+                  // Quick duration presets
+                  Wrap(
+                    spacing: 8,
+                    children: [5, 10, 15, 20, 30, 60].map((sec) {
+                      final isSelected = durationSeconds == sec;
+                      return ChoiceChip(
+                        label: Text('${sec}s'),
+                        selected: isSelected,
+                        onSelected: (selected) {
+                          if (selected) {
+                            setSheetState(() {
+                              durationSeconds = sec;
+                              durationController.text = sec.toString();
+                            });
+                          }
+                        },
+                        selectedColor: AppTheme.primaryTeal.withValues(alpha: 0.35),
+                        labelStyle: TextStyle(
+                          color: isSelected ? AppTheme.accentCyan : Colors.white60,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        side: BorderSide(
+                          color: isSelected ? AppTheme.primaryTeal : Colors.white12,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Custom duration input field
                   TextField(
-                    controller: quantityController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
+                    controller: durationController,
+                    keyboardType: TextInputType.number,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
                     ),
+                    onChanged: (val) {
+                      final parsed = int.tryParse(val);
+                      if (parsed != null && parsed > 0) {
+                        setSheetState(() => durationSeconds = parsed);
+                      }
+                    },
                     decoration: InputDecoration(
-                      prefixIcon: Icon(Icons.scale,
+                      prefixIcon: Icon(Icons.timer_outlined,
                           color: AppTheme.accentCyan, size: 20),
-                      suffixText: 'g',
+                      suffixText: 'seconds',
                       suffixStyle: const TextStyle(
                         color: Colors.white38,
                         fontSize: 14,
                       ),
+                      hintText: 'Enter duration in seconds',
                     ),
                   ),
                   const SizedBox(height: 28),
@@ -214,21 +265,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
-                      onPressed: selectedDays.isEmpty
+                      onPressed: selectedDays.isEmpty || durationSeconds <= 0
                           ? null
                           : () async {
                               final timeStr =
                                   '${selectedTime.hour.toString().padLeft(2, '0')}:${selectedTime.minute.toString().padLeft(2, '0')}';
-                              final quantity =
-                                  double.tryParse(quantityController.text) ??
-                                      50;
                               await _firestoreService.addSchedule(
                                 time: timeStr,
-                                days: selectedDays.toList()..sort((a, b) {
-                                  return _allDays.indexOf(a)
-                                      .compareTo(_allDays.indexOf(b));
-                                }),
-                                quantityGrams: quantity,
+                                days: selectedDays.toList()
+                                  ..sort((a, b) {
+                                    return _allDays
+                                        .indexOf(a)
+                                        .compareTo(_allDays.indexOf(b));
+                                  }),
+                                durationSeconds: durationSeconds,
                               );
                               if (context.mounted) Navigator.pop(context);
                             },
@@ -404,27 +454,30 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   ),
                   const SizedBox(width: 12),
 
-                  // Quantity
+                  // Duration badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10, vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: AppTheme.warningAmber.withValues(alpha: 0.12),
+                      color: AppTheme.accentCyan.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: AppTheme.accentCyan.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.scale,
-                            size: 14, color: AppTheme.warningAmber),
+                        Icon(Icons.timer_outlined,
+                            size: 14, color: AppTheme.accentCyan),
                         const SizedBox(width: 4),
                         Text(
-                          '${schedule.quantityGrams.toStringAsFixed(0)}g',
+                          '${schedule.durationSeconds}s',
                           style: TextStyle(
                             fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.warningAmber,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.accentCyan,
                           ),
                         ),
                       ],

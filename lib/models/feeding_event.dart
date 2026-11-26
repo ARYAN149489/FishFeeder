@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class FeedingEvent {
   final String? id;
   final double quantityGrams;
+  final int? durationSeconds;
   final String trigger; // "manual" or "scheduled"
   final bool success;
   final DateTime timestamp;
@@ -11,6 +12,7 @@ class FeedingEvent {
   const FeedingEvent({
     this.id,
     required this.quantityGrams,
+    this.durationSeconds,
     required this.trigger,
     required this.success,
     required this.timestamp,
@@ -22,6 +24,7 @@ class FeedingEvent {
     return FeedingEvent(
       id: doc.id,
       quantityGrams: (data['quantity_grams'] ?? 0).toDouble(),
+      durationSeconds: (data['duration_seconds'] as num?)?.toInt(),
       trigger: data['trigger'] ?? 'manual',
       success: data['success'] ?? false,
       timestamp: _parseTimestamp(data['timestamp']),
@@ -32,6 +35,7 @@ class FeedingEvent {
   Map<String, dynamic> toMap() {
     return {
       'quantity_grams': quantityGrams,
+      if (durationSeconds != null) 'duration_seconds': durationSeconds,
       'trigger': trigger,
       'success': success,
       'timestamp': FieldValue.serverTimestamp(),

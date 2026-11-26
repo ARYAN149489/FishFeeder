@@ -32,13 +32,27 @@ class FirestoreService {
   // Commands
   // ──────────────────────────────────────────────
 
-  /// Send a feeding command ("start_feeding" or "stop_feeding")
-  Future<void> sendCommand(String type) async {
-    await _db.collection('$_devicePath/commands').add({
+  /// Send a feeding command ("start_feeding" or "stop_feeding") with optional duration in seconds
+  Future<void> sendCommand(String type, {int? durationSeconds}) async {
+    final data = <String, dynamic>{
       'type': type,
       'status': 'pending',
       'created_at': FieldValue.serverTimestamp(),
-    });
+    };
+    if (durationSeconds != null && durationSeconds > 0) {
+      data['duration_seconds'] = durationSeconds;
+    }
+    await _db.collection('$_devicePath/commands').add(data);
+  }
+
+  /// Stream the most recent command to observe device state/status
+  Stream<DocumentSnapshot?> streamLatestCommand() {
+    return _db
+        .collection('$_devicePath/commands')
+        .orderBy('created_at', descending: true)
+        .limit(1)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.isNotEmpty ? snapshot.docs.first : null);
   }
 
   // ──────────────────────────────────────────────
@@ -56,16 +70,19 @@ class FirestoreService {
             .toList());
   }
 
-  /// Add a new feeding schedule
+  /// Add a new feeding schedule with duration in seconds
   Future<void> addSchedule({
     required String time,
     required List<String> days,
-    required double quantityGrams,
+    required int durationSeconds,
+    double? quantityGrams,
   }) async {
+    final grams = quantityGrams ?? (durationSeconds * 5.0);
     await _db.collection('$_devicePath/schedules').add({
       'time': time,
       'days': days,
-      'quantity_grams': quantityGrams,
+      'duration_seconds': durationSeconds,
+      'quantity_grams': grams,
       'active': true,
       'created_at': FieldValue.serverTimestamp(),
     });
@@ -131,6 +148,7 @@ class FirestoreService {
       {
         'time': '07:00',
         'days': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+        'duration_seconds': 10,
         'quantity_grams': 50.0,
         'active': true,
         'created_at': FieldValue.serverTimestamp(),
@@ -138,6 +156,7 @@ class FirestoreService {
       {
         'time': '12:30',
         'days': ['Mon', 'Wed', 'Fri'],
+        'duration_seconds': 6,
         'quantity_grams': 30.0,
         'active': true,
         'created_at': FieldValue.serverTimestamp(),
@@ -145,6 +164,7 @@ class FirestoreService {
       {
         'time': '18:00',
         'days': ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+        'duration_seconds': 9,
         'quantity_grams': 45.0,
         'active': false,
         'created_at': FieldValue.serverTimestamp(),
@@ -159,7 +179,9 @@ class FirestoreService {
     final now = DateTime.now();
     final historyEntries = List.generate(20, (i) {
       final ts = now.subtract(Duration(hours: i * 6));
+      final duration = 5 + (i % 4) * 3;
       return {
+        'duration_seconds': duration,
         'quantity_grams': 25.0 + (i % 5) * 10.0,
         'trigger': i % 3 == 0 ? 'manual' : 'scheduled',
         'success': i != 7, // one failure for demo

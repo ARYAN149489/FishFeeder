@@ -14,29 +14,40 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final FirestoreService _firestoreService = FirestoreService();
   bool _isSendingCommand = false;
   bool _isProcessingData = false;
+  bool _isFeederRunning = false;
+  int _selectedManualDuration = 0; // 0 = continuous until stopped
 
-  Future<void> _sendCommand(String type) async {
+  Future<void> _sendCommand(String type, {int? durationSeconds}) async {
     setState(() => _isSendingCommand = true);
     try {
-      await _firestoreService.sendCommand(type);
+      await _firestoreService.sendCommand(type, durationSeconds: durationSeconds);
       if (mounted) {
-        final label = type == 'start_feeding' ? 'Start' : 'Stop';
+        final isStart = type == 'start_feeding';
+        setState(() {
+          _isFeederRunning = isStart;
+        });
+        final durationLabel = (durationSeconds != null && durationSeconds > 0)
+            ? ' for ${durationSeconds}s'
+            : '';
+        final label = isStart ? 'Start Feeding$durationLabel' : 'Stop Feeding';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 Icon(
-                  type == 'start_feeding'
+                  isStart
                       ? Icons.check_circle_outline
                       : Icons.pause_circle_outline,
                   color: Colors.white,
                   size: 20,
                 ),
                 const SizedBox(width: 10),
-                Text('$label feeding command sent to device!'),
+                Expanded(
+                  child: Text('$label command sent to Arduino!'),
+                ),
               ],
             ),
-            backgroundColor: type == 'start_feeding'
+            backgroundColor: isStart
                 ? AppTheme.successGreen
                 : AppTheme.warningAmber,
             behavior: SnackBarBehavior.floating,
@@ -796,14 +807,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Feeding Control',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
+            Row(
+              children: [
+                const Text(
+                  'Dispenser Control',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                if (_isFeederRunning) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.successGreen.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.successGreen.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppTheme.successGreen,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        const Text(
+                          'DISPENSING',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.successGreen,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
             if (_isSendingCommand)
               const SizedBox(
@@ -816,17 +867,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+
+        // Duration selector row
+        const Text(
+          'Dispense Duration Mode',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Colors.white54,
+          ),
+        ),
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _buildDurationChip(0, 'Continuous'),
+              const SizedBox(width: 6),
+              _buildDurationChip(5, '5 sec'),
+              const SizedBox(width: 6),
+              _buildDurationChip(10, '10 sec'),
+              const SizedBox(width: 6),
+              _buildDurationChip(15, '15 sec'),
+              const SizedBox(width: 6),
+              _buildDurationChip(30, '30 sec'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Start / Stop Buttons
         Row(
           children: [
             Expanded(
               child: _buildCommandButton(
                 icon: Icons.play_arrow_rounded,
-                label: 'Start Feeding',
+                label: _selectedManualDuration > 0
+                    ? 'Start (${_selectedManualDuration}s)'
+                    : 'Start Feeding',
                 color: AppTheme.successGreen,
+                isActive: _isFeederRunning,
                 onPressed: _isSendingCommand
                     ? null
-                    : () => _sendCommand('start_feeding'),
+                    : () => _sendCommand(
+                          'start_feeding',
+                          durationSeconds: _selectedManualDuration > 0
+                              ? _selectedManualDuration
+                              : null,
+                        ),
               ),
             ),
             const SizedBox(width: 12),
@@ -835,6 +924,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 icon: Icons.stop_rounded,
                 label: 'Stop Feeding',
                 color: AppTheme.errorRed,
+                isActive: !_isFeederRunning,
                 onPressed: _isSendingCommand
                     ? null
                     : () => _sendCommand('stop_feeding'),
@@ -846,10 +936,35 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildDurationChip(int seconds, String label) {
+    final isSelected = _selectedManualDuration == seconds;
+    return ChoiceChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (selected) {
+        if (selected) {
+          setState(() => _selectedManualDuration = seconds);
+        }
+      },
+      selectedColor: AppTheme.accentCyan.withValues(alpha: 0.25),
+      labelStyle: TextStyle(
+        fontSize: 12,
+        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+        color: isSelected ? AppTheme.accentCyan : Colors.white60,
+      ),
+      side: BorderSide(
+        color: isSelected ? AppTheme.accentCyan : Colors.white12,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+    );
+  }
+
   Widget _buildCommandButton({
     required IconData icon,
     required String label,
     required Color color,
+    bool isActive = false,
     required VoidCallback? onPressed,
   }) {
     return Material(

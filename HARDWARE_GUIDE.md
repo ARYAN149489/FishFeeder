@@ -90,5 +90,12 @@ Use a voltage divider (10k + 10k) from Solar Panel V+ to A4. If voltage on A4 is
 
 **Data Flow:**
 1. **Sensor to Firebase:** Arduino reads sensors every 30s -> sends JSON to ESP8266 via Serial -> ESP8266 sends HTTP POST to Firestore REST API -> App reads it in real-time
-2. **App to Arduino:** User taps Start Feeding -> writes command to Firestore -> ESP8266 polls for pending commands -> sends to Arduino via Serial -> Arduino activates servo motor
-3. **Schedules:** ESP8266 polls active schedules from Firestore -> compares with current time -> tells Arduino to feed when schedule matches
+2. **App to Arduino (Manual Start/Stop & Timed Feed):** 
+   - User taps **Start Feeding**:
+     - *Continuous mode*: Arduino opens feed gate/starts motor until user taps **Stop Feeding**.
+     - *Timed mode (e.g. 5s, 10s, 15s)*: Arduino opens dispenser for the requested duration and automatically closes.
+   - User taps **Stop Feeding**: Arduino immediately closes the dispenser gate/stops motor and logs the event.
+3. **Schedules (When & For How Much Time):**
+   - Schedules specify the **Time**, **Days**, and **Duration (seconds)**.
+   - ESP8266 matches current time and day against active schedules.
+   - When triggered, it commands Arduino `START_FEED:<duration>`, dispensing food for the exact scheduled time and logging history.

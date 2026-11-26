@@ -55,19 +55,23 @@ The Arduino/ESP8266 writes a new document to this collection at regular interval
 
 **Path:** `devices/device_001/commands/{auto-id}`
 
-The app writes a command document when the user taps "Start Feeding" or "Stop Feeding". The Arduino should poll this collection for documents where `status == "pending"`, act on them, then update the `status` field.
+The app writes a command document when the user taps "Start Feeding" or "Stop Feeding". The Arduino polls this collection for documents where `status == "pending"`, acts on them, then updates the `status` field.
 
 | Field | Type | Description | Values |
 |---|---|---|---|
 | `type` | `string` | Command type | `"start_feeding"` or `"stop_feeding"` |
 | `status` | `string` | Command lifecycle state | `"pending"` → `"acknowledged"` → `"completed"` |
+| `duration_seconds` | `number` (int, optional) | Dispense duration in seconds (0 or omitted = continuous until `"stop_feeding"`) | `10` |
 | `created_at` | `Timestamp` | When the command was issued | (auto) |
 
 ### Arduino Workflow
 1. Query: `commands` where `status == "pending"`, ordered by `created_at` ascending, limit 1
-2. Read the `type` field
+2. Read `type` and optional `duration_seconds`
 3. Update `status` to `"acknowledged"` immediately
-4. Execute the feeding action (start/stop motor)
+4. Execute feeding action:
+   - If `type == "start_feeding"` and `duration_seconds > 0`: Open feed gate/motor for that duration, then automatically close.
+   - If `type == "start_feeding"` and no duration: Keep feed gate/motor running continuously.
+   - If `type == "stop_feeding"`: Immediately close feed gate/stop motor.
 5. Update `status` to `"completed"` when done
 
 ### Example Document (as written by app)
@@ -75,6 +79,7 @@ The app writes a command document when the user taps "Start Feeding" or "Stop Fe
 {
   "type": "start_feeding",
   "status": "pending",
+  "duration_seconds": 10,
   "created_at": "2026-09-09T10:05:00Z"
 }
 ```
@@ -85,13 +90,14 @@ The app writes a command document when the user taps "Start Feeding" or "Stop Fe
 
 **Path:** `devices/device_001/schedules/{auto-id}`
 
-The app manages feeding schedules. The Arduino should read active schedules and trigger feeding at the specified times.
+The app manages feeding schedules based on **when** (time + days) and **for how much time** (`duration_seconds`) food is dispensed.
 
 | Field | Type | Description | Example |
 |---|---|---|---|
 | `time` | `string` | 24-hour time in `"HH:mm"` format | `"08:30"` |
 | `days` | `array<string>` | Repeat days (3-letter abbreviations) | `["Mon", "Wed", "Fri"]` |
-| `quantity_grams` | `number` (double) | Feed amount in grams | `50.0` |
+| `duration_seconds` | `number` (int) | How long food is dispensed in seconds | `10` |
+| `quantity_grams` | `number` (double) | Estimated feed amount in grams | `50.0` |
 | `active` | `boolean` | Whether schedule is enabled | `true` |
 | `created_at` | `Timestamp` | When the schedule was created | (auto) |
 
@@ -99,9 +105,9 @@ The app manages feeding schedules. The Arduino should read active schedules and 
 `Mon`, `Tue`, `Wed`, `Thu`, `Fri`, `Sat`, `Sun`
 
 ### Arduino Workflow
-1. On boot, query all `schedules` where `active == true`
+1. On boot and periodically, query all `schedules` where `active == true`
 2. Compare current day-of-week + time against each schedule's `days` and `time`
-3. When a match is found, dispense `quantity_grams` of feed
+3. When a match is found, dispense food for `duration_seconds`
 4. After dispensing, write a `feeding_history` document (see below)
 
 ### Example Document
@@ -109,6 +115,7 @@ The app manages feeding schedules. The Arduino should read active schedules and 
 {
   "time": "07:00",
   "days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+  "duration_seconds": 10,
   "quantity_grams": 50.0,
   "active": true,
   "created_at": "2026-09-09T06:00:00Z"
@@ -121,11 +128,12 @@ The app manages feeding schedules. The Arduino should read active schedules and 
 
 **Path:** `devices/device_001/feeding_history/{auto-id}`
 
-A log of every feeding event. Written by the Arduino after each feeding (manual or scheduled). The app displays these in the History tab.
+A log of every feeding event. Written by the Arduino after each feeding (manual or scheduled).
 
 | Field | Type | Description | Example |
 |---|---|---|---|
-| `quantity_grams` | `number` (double) | Amount of feed actually dispensed | `50.0` |
+| `duration_seconds` | `number` (int, optional) | Actual seconds food was dispensed | `10` |
+| `quantity_grams` | `number` (double) | Amount of feed dispensed in grams | `50.0` |
 | `trigger` | `string` | What initiated the feeding | `"manual"` or `"scheduled"` |
 | `success` | `boolean` | Whether feeding completed successfully | `true` |
 | `timestamp` | `Timestamp` | When the feeding occurred | (auto) |
